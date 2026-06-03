@@ -214,12 +214,11 @@ let currentSort = "roi";
 let expandedCoins = new Set();
 
 // ─── 初期化 ──────────────────────────────────────
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
   buildGradeGrid();
-  await steamApi.loadSharedCaches(); // サイト側の共有キャッシュを先に反映
-  applyCachedPrices();
+  applyCachedPrices();   // localStorage から即時反映
   render();
-  startAutoUpdate();     // 共有キャッシュ状態を表示
+  startAutoUpdate();     // 自動価格更新
 });
 
 // ─── キャッシュからの即時反映 ────────────────────
@@ -235,13 +234,15 @@ function applyCachedPrices() {
   // カテゴリ別
   applyCatStats();
   // コイン価格
-  const savedCoinCache = steamApi.loadCoinCache();
-  const savedCoins = savedCoinCache && savedCoinCache.items ? savedCoinCache.items : savedCoinCache;
-  if (savedCoins) {
-    for (const [name, price] of Object.entries(savedCoins)) {
-      if (price > 0) coinPrices[name] = price;
+  try {
+    const raw = localStorage.getItem("tbh_coin_prices");
+    if (raw) {
+      const saved = JSON.parse(raw);
+      for (const [name, price] of Object.entries(saved)) {
+        if (price > 0) coinPrices[name] = price;
+      }
     }
-  }
+  } catch {}
 }
 
 function applyCatStats() {
@@ -256,21 +257,39 @@ function applyCatStats() {
   }
 }
 
-// ─── 共有価格キャッシュの読み込み状態 ───────────
+// ─── 自動価格更新 ────────────────────────────────
 async function startAutoUpdate() {
   const status = document.getElementById("fetchStatus");
 
-  await steamApi.loadSharedCaches();
+  // キャッシュが新鮮ならスキップ
+  if (steamApi.isCacheFresh()) {
+    const cache = steamApi.loadCache();
+    const ago = Math.round((Date.now() - cache.updatedAt) / 60000);
+    const count = Object.keys(cache.items).length;
+    status.textContent = `✅ ${count}件の価格データ取得済み（${ago}分前に更新）`;
+    return;
+  }
+
+  // バックグラウンド更新開始
+  await steamApi.updater.run((s) => {
+    if (s.phase === "discovering") {
+      status.textContent = `🔍 アイテム一覧を取得中…`;
+    } else if (s.phase === "pricing") {
+      status.textContent = `💰 価格取得中… ${s.progress}/${s.total}件`;
+      if (s.progress % 50 === 0) { applyCachedPrices(); render(); }
+    } else if (s.phase === "error") {
+      status.textContent = `❌ エラー: ${s.error}`;
+    }
+  });
+
+  // 完了後に全反映
   applyCachedPrices();
   render();
 
   const cache = steamApi.loadCache();
-  if (cache && cache.items) {
-    const ago = Math.round((Date.now() - cache.updatedAt) / 60000);
+  if (cache) {
     const count = Object.keys(cache.items).length;
-    status.textContent = `${count}件の共有価格データを表示中（${ago}分前）`;
-  } else {
-    status.textContent = "共有価格データはまだありません（管理者の定期更新待ち）";
+    status.textContent = `✅ ${count}件の価格を取得完了`;
   }
 }
 
@@ -552,23 +571,30 @@ function toggleExpand(nameEn) {
   render();
 }
 
-// ─── 共有価格の再読み込み（手動ボタン）────────────
-async function reloadSharedPrices() {
+// ─── コイン価格取得（手動ボタン） ─────────────────
+async function fetchCoinPrices() {
   const btn = document.getElementById("fetchAllBtn");
   const status = document.getElementById("fetchStatus");
   const spinner = document.getElementById("fetchSpinner");
   btn.disabled = true;
   spinner.classList.remove("hidden");
 
-  status.textContent = "共有価格データを再読み込み中…";
-  const { marketCache, coinCache } = await steamApi.loadSharedCaches();
-  applyCachedPrices();
-  render();
+  status.textContent = "🪙 コイン価格を取得中…";
+  const coinNames = COINS.map(c => c.nameEn);
+  const results = await steamApi.fetchCoinPrices(coinNames, (done, total) => {
+    status.textContent = `🪙 コイン価格を取得中… ${done}/${total}`;
+  });
 
-  const marketCount = marketCache?.items ? Object.keys(marketCache.items).length : 0;
-  const coinCount = coinCache?.items ? Object.keys(coinCache.items).length : 0;
-  status.textContent = `共有価格データを再読み込みしました（アイテム${marketCount}件 / コイン${coinCount}件）`;
+  let updated = 0;
+  for (const [name, price] of Object.entries(results)) {
+    if (price > 0) { coinPrices[name] = price; updated++; }
+  }
+  try { localStorage.setItem("tbh_coin_prices", JSON.stringify(coinPrices)); } catch {}
+
+  status.textContent = `✅ コイン価格 ${updated}/${coinNames.length}種を更新しました`;
   btn.disabled = false;
   spinner.classList.add("hidden");
+  COINS.forEach(c => expandedCoins.add(c.nameEn));
+  render();
 }
 

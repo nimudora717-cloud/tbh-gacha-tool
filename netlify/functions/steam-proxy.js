@@ -1,14 +1,12 @@
-// 共有キャッシュ読み取り + Steam APIフォールバックプロキシ
-// market-refresh (Scheduled Function) が書き込んだ Netlify Blobs を読む。
-// Blobs が空の場合は直接 Steam API を叩くフォールバック付き。
+// Steam API CORS proxy for Netlify Functions
+// クライアントからのリクエストを Steam API に中継する。
+// gzip 対応。price (priceoverview) と search (search/render) の2種類。
 
 const https = require("https");
 const zlib = require("zlib");
 
 const APP_ID = 3678970;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const STORE_NAME = "tbh-market-cache";
-const CACHE_KEYS = new Set(["market-prices", "coin-prices"]);
 
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
@@ -29,10 +27,6 @@ function httpsGet(url) {
   });
 }
 
-function jsonResponse(statusCode, headers, data) {
-  return { statusCode, headers, body: JSON.stringify(data) };
-}
-
 exports.handler = async (event) => {
   const params = event.queryStringParameters || {};
   const type = params.type;
@@ -41,56 +35,38 @@ exports.handler = async (event) => {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "*",
-    "Cache-Control": "public, max-age=60",
+    "Cache-Control": "public, max-age=300",
   };
 
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers, body: "" };
   }
 
-  // ─── type=cache: Netlify Blobs から共有キャッシュ読み取り
-  if (type === "cache") {
-    const key = params.key;
-    if (!CACHE_KEYS.has(key)) {
-      return jsonResponse(400, headers, { success: false, error: "invalid cache key" });
-    }
-    try {
-      const { getStore } = await import("@netlify/blobs");
-      const store = getStore(STORE_NAME);
-      const data = await store.get(key, { type: "json" });
-      return jsonResponse(200, headers, { success: true, data });
-    } catch (e) {
-      return jsonResponse(200, headers, { success: false, error: e.message, data: null });
-    }
-  }
+  let steamUrl;
 
-  // ─── type=price: 直接 Steam priceoverview（フォールバック）
   if (type === "price") {
     const name = params.name;
     const currency = params.currency || "8";
-    if (!name) return jsonResponse(400, headers, { error: "name required" });
-    try {
-      const steamUrl = `https://steamcommunity.com/market/priceoverview/?appid=${APP_ID}&currency=${currency}&market_hash_name=${encodeURIComponent(name)}`;
-      const body = await httpsGet(steamUrl);
-      return { statusCode: 200, headers, body };
-    } catch (e) {
-      return jsonResponse(502, headers, { success: false, error: e.message });
-    }
-  }
-
-  // ─── type=search: 直接 Steam search/render（フォールバック）
-  if (type === "search") {
+    if (!name) return { statusCode: 400, headers, body: JSON.stringify({ error: "name required" }) };
+    steamUrl =
+      `https://steamcommunity.com/market/priceoverview/` +
+      `?appid=${APP_ID}&currency=${currency}&market_hash_name=${encodeURIComponent(name)}`;
+  } else if (type === "search") {
     const query = params.q || "";
     const start = params.start || "0";
     const count = params.count || "10";
-    try {
-      const steamUrl = `https://steamcommunity.com/market/search/render/?appid=${APP_ID}&norender=1&count=${count}&start=${start}&query=${encodeURIComponent(query)}`;
-      const body = await httpsGet(steamUrl);
-      return { statusCode: 200, headers, body };
-    } catch (e) {
-      return jsonResponse(502, headers, { success: false, error: e.message });
-    }
+    steamUrl =
+      `https://steamcommunity.com/market/search/render/` +
+      `?appid=${APP_ID}&norender=1&count=${count}&start=${start}` +
+      `&query=${encodeURIComponent(query)}`;
+  } else {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: "type must be 'price' or 'search'" }) };
   }
 
-  return jsonResponse(400, headers, { error: "type must be 'cache', 'price', or 'search'" });
+  try {
+    const body = await httpsGet(steamUrl);
+    return { statusCode: 200, headers, body };
+  } catch (e) {
+    return { statusCode: 502, headers, body: JSON.stringify({ success: false, error: e.message }) };
+  }
 };
