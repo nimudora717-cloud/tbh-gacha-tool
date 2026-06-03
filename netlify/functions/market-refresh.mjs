@@ -9,18 +9,30 @@ const MARKET_CACHE_KEY = "market-prices";
 const COIN_CACHE_KEY = "coin-prices";
 const STATE_KEY = "refresh-state";
 const CATALOG_KEY = "market-catalog";
-const CYCLE_REQUEST_LIMIT = 18; // 20req/min reported for market search; keep ~10% headroom
-const MAX_RUN_MS = 8500; // stay below Netlify's default 10s scheduled function timeout
+const STATE_VERSION = 2;
+const CYCLE_REQUEST_LIMIT = 100; // user-requested target: up to 100 sequential Steam requests per minute
+const MAX_RUN_MS = 55 * 1000; // leave a little room before the next minute tick
 const SEARCH_COUNT = 100;
 const CATALOG_TTL = 7 * 24 * 60 * 60 * 1000;
 const COIN_REFRESH_TTL = 6 * 60 * 60 * 1000;
 
-const BG_GRADES = ["ARCANA", "BEYOND", "CELESTIAL", "DIVINE", "COSMIC", "IMMORTAL", "LEGENDARY", "RARE", "UNCOMMON", "COMMON"];
+const BG_GRADES = ["COSMIC", "DIVINE", "CELESTIAL", "BEYOND", "ARCANA", "IMMORTAL", "LEGENDARY", "RARE", "UNCOMMON", "COMMON"];
 const GRADE_KEYWORDS = {
   COMMON: "(Common)", UNCOMMON: "(Uncommon)", RARE: "(Rare)", LEGENDARY: "(Legendary)",
   IMMORTAL: "(Immortal)", ARCANA: "(Arcana)", BEYOND: "(Beyond)", CELESTIAL: "(Celestial)",
   DIVINE: "(Divine)", COSMIC: "(Cosmic)",
 };
+const GRADE_RANK = Object.fromEntries(BG_GRADES.map((grade, index) => [grade, index]));
+
+function gradeRank(name) {
+  const match = name.match(/\(([^)]+)\)/);
+  return GRADE_RANK[match?.[1]?.toUpperCase()] ?? BG_GRADES.length;
+}
+
+function sortByGradePriority(names) {
+  return [...new Set(names)].sort((a, b) => gradeRank(a) - gradeRank(b) || a.localeCompare(b));
+}
+
 const COIN_NAMES = [
   "Kingdom 1st Anniversary Coin",
   "Empire 1st Anniversary Coin",
@@ -184,7 +196,7 @@ async function discoverCatalogChunk(store, state, cycle, log) {
   state.discovery.failures = 0;
   const discoveredNames = data.results.map((item) => item.name).filter(Boolean);
   state.discovery.names.push(...discoveredNames);
-  state.priceQueue = [...new Set([...(state.priceQueue || []), ...discoveredNames])];
+  state.priceQueue = sortByGradePriority([...(state.priceQueue || []), ...discoveredNames]);
   const nextStart = start + SEARCH_COUNT;
   if (nextStart < (data.total_count || 0)) {
     state.discovery.start = nextStart;
@@ -194,7 +206,7 @@ async function discoverCatalogChunk(store, state, cycle, log) {
   }
 
   if (state.discovery.gradeIndex >= BG_GRADES.length) {
-    catalog.names = [...new Set(state.discovery.names)].sort();
+    catalog.names = sortByGradePriority(state.discovery.names);
     catalog.updatedAt = Date.now();
     state.discovery.done = true;
     state.marketIndex = 0;
@@ -211,12 +223,13 @@ async function discoverCatalogChunk(store, state, cycle, log) {
 async function refreshMarketBatch(store, state, catalog, cycle, log) {
   if (!catalog.names.length || !state.discovery?.done) return;
 
+  const catalogNames = sortByGradePriority(catalog.names);
   let index = state.marketIndex || 0;
   const names = [];
 
-  while (canRequest(cycle) && names.length < cycle.remaining && catalog.names.length > 0) {
-    names.push(catalog.names[index % catalog.names.length]);
-    index = (index + 1) % catalog.names.length;
+  while (canRequest(cycle) && names.length < cycle.remaining && catalogNames.length > 0) {
+    names.push(catalogNames[index % catalogNames.length]);
+    index = (index + 1) % catalogNames.length;
   }
 
   const { attempted } = await saveMarketPrices(store, names, cycle, log, "market");
@@ -227,6 +240,18 @@ export default async () => {
   const store = getStore(STORE_NAME);
   const state = await getJson(store, STATE_KEY, {});
   const log = [];
+
+  if (state.refreshVersion !== STATE_VERSION) {
+    state.discovery = null;
+    state.priceQueue = [];
+    state.marketIndex = 0;
+    state.refreshVersion = STATE_VERSION;
+    log.push(`state-reset:v${STATE_VERSION}`);
+  }
+
+  if (state.priceQueue?.length) {
+    state.priceQueue = sortByGradePriority(state.priceQueue);
+  }
   const cycle = { remaining: CYCLE_REQUEST_LIMIT, startedAt: Date.now() };
 
   await refreshCoins(store, state, cycle, log);

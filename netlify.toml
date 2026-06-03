@@ -12,4 +12,4 @@
     X-Content-Type-Options = "nosniff"
 
 [functions."market-refresh"]
-schedule = "*/11 * * * *"
+schedule = "* * * * *"
