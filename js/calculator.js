@@ -218,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
   buildGradeGrid();
   applyCachedPrices();   // localStorage から即時反映
   render();
-  startAutoUpdate();     // 自動価格更新
+  showCacheStatus();     // キャッシュ状態を表示
 });
 
 // ─── キャッシュからの即時反映 ────────────────────
@@ -257,39 +257,16 @@ function applyCatStats() {
   }
 }
 
-// ─── 自動価格更新 ────────────────────────────────
-async function startAutoUpdate() {
+// ─── 初回読み込み時のステータス表示 ─────────────
+function showCacheStatus() {
   const status = document.getElementById("fetchStatus");
-
-  // キャッシュが新鮮ならスキップ
-  if (steamApi.isCacheFresh()) {
-    const cache = steamApi.loadCache();
+  const cache = steamApi.loadCache();
+  if (cache && cache.items && Object.keys(cache.items).length > 0) {
     const ago = Math.round((Date.now() - cache.updatedAt) / 60000);
     const count = Object.keys(cache.items).length;
-    status.textContent = `✅ ${count}件の価格データ取得済み（${ago}分前に更新）`;
-    return;
-  }
-
-  // バックグラウンド更新開始
-  await steamApi.updater.run((s) => {
-    if (s.phase === "discovering") {
-      status.textContent = `🔍 アイテム一覧を取得中…`;
-    } else if (s.phase === "pricing") {
-      status.textContent = `💰 価格取得中… ${s.progress}/${s.total}件`;
-      if (s.progress % 50 === 0) { applyCachedPrices(); render(); }
-    } else if (s.phase === "error") {
-      status.textContent = `❌ エラー: ${s.error}`;
-    }
-  });
-
-  // 完了後に全反映
-  applyCachedPrices();
-  render();
-
-  const cache = steamApi.loadCache();
-  if (cache) {
-    const count = Object.keys(cache.items).length;
-    status.textContent = `✅ ${count}件の価格を取得完了`;
+    status.textContent = `✅ ${count}件の価格データ取得済み（${ago}分前） — ボタンで最新化`;
+  } else {
+    status.textContent = `⚠️ 価格データなし — 「一括取得」ボタンを押してください`;
   }
 }
 
@@ -571,27 +548,57 @@ function toggleExpand(nameEn) {
   render();
 }
 
-// ─── コイン価格取得（手動ボタン） ─────────────────
-async function fetchCoinPrices() {
+// ─── 一括価格取得（アイテム全件 + コイン価格） ────
+async function fetchAllPrices() {
   const btn = document.getElementById("fetchAllBtn");
   const status = document.getElementById("fetchStatus");
   const spinner = document.getElementById("fetchSpinner");
   btn.disabled = true;
   spinner.classList.remove("hidden");
 
-  status.textContent = "🪙 コイン価格を取得中…";
+  const startTime = Date.now();
+
+  // ① アイテム全件の価格取得
+  await steamApi.updater.run((s) => {
+    if (s.phase === "discovering") {
+      status.textContent = `🔍 アイテム一覧を取得中…`;
+    } else if (s.phase === "pricing") {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      status.textContent = `💰 アイテム価格取得中… ${s.progress}/${s.total}件（${elapsed}秒経過）`;
+      // 50件ごとに中間反映
+      if (s.progress % 50 === 0) {
+        applyCachedPrices();
+        render();
+      }
+    } else if (s.phase === "error") {
+      status.textContent = `❌ エラー: ${s.error}`;
+    }
+  });
+
+  // アイテム価格を反映
+  applyCachedPrices();
+  render();
+
+  const itemCache = steamApi.loadCache();
+  const itemCount = itemCache ? Object.keys(itemCache.items).length : 0;
+
+  // ② コイン価格取得
+  status.textContent = `🪙 コイン価格を取得中… 0/${COINS.length}`;
   const coinNames = COINS.map(c => c.nameEn);
-  const results = await steamApi.fetchCoinPrices(coinNames, (done, total) => {
+  const coinResults = await steamApi.fetchCoinPrices(coinNames, (done, total) => {
     status.textContent = `🪙 コイン価格を取得中… ${done}/${total}`;
   });
 
-  let updated = 0;
-  for (const [name, price] of Object.entries(results)) {
-    if (price > 0) { coinPrices[name] = price; updated++; }
+  let coinUpdated = 0;
+  for (const [name, price] of Object.entries(coinResults)) {
+    if (price > 0) { coinPrices[name] = price; coinUpdated++; }
   }
   try { localStorage.setItem("tbh_coin_prices", JSON.stringify(coinPrices)); } catch {}
 
-  status.textContent = `✅ コイン価格 ${updated}/${coinNames.length}種を更新しました`;
+  // ③ 完了
+  const elapsed = Math.round((Date.now() - startTime) / 1000);
+  status.textContent = `✅ 取得完了！ アイテム${itemCount}件 + コイン${coinUpdated}件（${elapsed}秒）`;
+
   btn.disabled = false;
   spinner.classList.add("hidden");
   COINS.forEach(c => expandedCoins.add(c.nameEn));
