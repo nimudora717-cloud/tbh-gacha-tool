@@ -472,6 +472,19 @@ body {
   animation-fill-mode: both;
 }
 
+/* 10連のベストカード強調 */
+.pull-result.best-card {
+  transform: scale(1.05);
+  z-index: 1;
+}
+
+/* 100連の行出現アニメーション */
+@keyframes bulkRowIn {
+  0%   { transform: translateX(-30px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+.bulk-row { will-change: transform, opacity; }
+
 .pull-result .result-grade { font-size: 14px; margin-bottom: 8px; }
 .pull-result .result-name { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
 .pull-result .result-price { font-family: 'Roboto Mono', monospace; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
