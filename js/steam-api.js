@@ -254,6 +254,6 @@ async function fetchCoinPrices(coinNames, onProgress) {
 // ─── エクスポート ────────────────────────────────
 window.steamApi = {
   updater, getCatStats, getGradePrices, fetchCoinPrices,
-  isCacheFresh, loadCache, loadCoinCache, steamPrice, steamSearch,
+  isCacheFresh, loadCache, saveCache, loadCoinCache, steamPrice, steamSearch,
   detectCategory, GRADE_KEYWORDS, BG_GRADES,
 };

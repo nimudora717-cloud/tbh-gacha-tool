@@ -213,13 +213,52 @@ let catPricesMedian = {};
 let currentSort = "roi";
 let expandedCoins = new Set();
 
+// ─── 管理者モード判定 ────────────────────────────
+const IS_ADMIN = new URLSearchParams(location.search).has("admin");
+
 // ─── 初期化 ──────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   buildGradeGrid();
-  applyCachedPrices();   // localStorage から即時反映
+
+  // まず localStorage のキャッシュを適用
+  applyCachedPrices();
   render();
-  showCacheStatus();     // キャッシュ状態を表示
+
+  // 配信用 prices.json があれば読み込み（管理者がエクスポートしたもの）
+  await loadStaticPrices();
+  applyCachedPrices();
+  render();
+
+  showCacheStatus();
+
+  if (IS_ADMIN) {
+    document.getElementById("fetchAllBtn").classList.remove("hidden");
+  }
 });
+
+// ─── 配信用 prices.json からの読み込み ───────────
+async function loadStaticPrices() {
+  try {
+    const res = await fetch("/prices.json?" + Date.now()); // キャッシュバスト
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.items) return;
+
+    // localStorage のキャッシュより新しければ更新
+    const local = steamApi.loadCache();
+    if (!local || !local.updatedAt || data.updatedAt > local.updatedAt) {
+      steamApi.saveCache({ items: data.items, updatedAt: data.updatedAt });
+    }
+
+    // コイン価格
+    if (data.coins) {
+      const localCoins = steamApi.loadCoinCache();
+      if (!localCoins || data.updatedAt > (localCoins.updatedAt || 0)) {
+        try { localStorage.setItem("tbh_coin_prices", JSON.stringify(data.coins)); } catch {}
+      }
+    }
+  } catch {} // prices.json がなくても問題なし
+}
 
 // ─── キャッシュからの即時反映 ────────────────────
 function applyCachedPrices() {
@@ -264,9 +303,17 @@ function showCacheStatus() {
   if (cache && cache.items && Object.keys(cache.items).length > 0) {
     const ago = Math.round((Date.now() - cache.updatedAt) / 60000);
     const count = Object.keys(cache.items).length;
-    status.textContent = `✅ ${count}件の価格データ取得済み（${ago}分前） — ボタンで最新化`;
+    if (IS_ADMIN) {
+      status.textContent = `✅ ${count}件取得済み（${ago}分前） — ボタンで最新化`;
+    } else {
+      status.textContent = `✅ ${count}件の価格データを表示中（${ago}分前に更新）`;
+    }
   } else {
-    status.textContent = `⚠️ 価格データなし — 「一括取得」ボタンを押してください`;
+    if (IS_ADMIN) {
+      status.textContent = `⚠️ 価格データなし — 「一括取得」ボタンを押してください`;
+    } else {
+      status.textContent = `📊 デフォルト価格で表示中（グレード入力欄から手動設定可）`;
+    }
   }
 }
 
@@ -595,7 +642,7 @@ async function fetchAllPrices() {
   }
   try { localStorage.setItem("tbh_coin_prices", JSON.stringify(coinPrices)); } catch {}
 
-  // ③ 完了
+  // ③ 完了 → JSONダウンロードを提供
   const elapsed = Math.round((Date.now() - startTime) / 1000);
   status.textContent = `✅ 取得完了！ アイテム${itemCount}件 + コイン${coinUpdated}件（${elapsed}秒）`;
 
@@ -603,5 +650,20 @@ async function fetchAllPrices() {
   spinner.classList.add("hidden");
   COINS.forEach(c => expandedCoins.add(c.nameEn));
   render();
+
+  // 管理者向け: 取得データをJSONエクスポート（リポジトリに入れて全ユーザーに配信）
+  if (IS_ADMIN) {
+    const exportData = {
+      items: steamApi.loadCache()?.items || {},
+      coins: coinPrices,
+      updatedAt: Date.now(),
+    };
+    const blob = new Blob([JSON.stringify(exportData)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const dlLink = document.createElement("div");
+    dlLink.style.cssText = "text-align:center;margin-top:8px;";
+    dlLink.innerHTML = `<a href="${url}" download="prices.json" style="color:var(--accent);font-size:12px;">📥 prices.json をダウンロード（リポジトリに配置用）</a>`;
+    document.getElementById("fetchAllBtn").parentElement.appendChild(dlLink);
+  }
 }
 
