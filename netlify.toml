@@ -11,5 +11,3 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
 
-[functions."market-refresh"]
-schedule = "* * * * *"

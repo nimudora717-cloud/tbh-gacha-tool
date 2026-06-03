@@ -263,3 +263,7 @@ export default async () => {
 
   console.log(`market-refresh ${log.join(", ")}`);
 };
+
+export const config = {
+  schedule: "* * * * *",
+};
