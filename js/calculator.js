@@ -608,7 +608,7 @@ async function fetchAllPrices() {
   // ① アイテム全件の価格取得
   await steamApi.updater.run((s) => {
     if (s.phase === "discovering") {
-      status.textContent = `🔍 アイテム一覧を取得中…`;
+      status.textContent = `🔍 アイテム一覧を取得中… ${s.progress}件発見`;
     } else if (s.phase === "pricing") {
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       status.textContent = `💰 アイテム価格取得中… ${s.progress}/${s.total}件（${elapsed}秒経過）`;

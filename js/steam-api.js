@@ -123,17 +123,23 @@ const updater = {
 
   async _discover() {
     const allNames = new Set();
+    const PAGE = 10; // Steam API は1回最大10件固定
     for (const grade of BG_GRADES) {
       const keyword = GRADE_KEYWORDS[grade];
       if (!keyword) continue;
       let start = 0, total = Infinity;
       while (start < total) {
         try {
-          const data = await steamSearch(keyword, start, 100);
+          const data = await steamSearch(keyword, start, PAGE);
           if (!data.success || !data.results) break;
           total = data.total_count || 0;
           data.results.forEach(i => allNames.add(i.name));
-          start += 100;
+          start += PAGE;
+          this._onProgress?.({
+            running: true, phase: "discovering",
+            progress: allNames.size, total: 0,
+            completedAt: null, error: null,
+          });
           if (start < total) await sleep(REQUEST_DELAY);
         } catch { break; }
       }
