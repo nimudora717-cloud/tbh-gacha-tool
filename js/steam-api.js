@@ -1,10 +1,11 @@
 // ─── Steam API Client (Netlify Functions 経由) ──────────────
-// すべてブラウザ内で動作。localStorage で 10 分キャッシュ。
+// Netlify Functions 上の共有キャッシュを優先し、localStorage はフォールバックとして使う。
 // priceoverview（currency=8 JPY）で正確な価格を取得する。
 
 const PROXY = "/.netlify/functions/steam-proxy";
-const REQUEST_DELAY = 1800; // ms between requests (rate limit対策)
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const MARKET_CACHE_KEY = "market-prices";
+const COIN_CACHE_KEY = "coin-prices";
 
 // ─── グレード / カテゴリ定数 ────────────────────────
 const BG_GRADES = ["ARCANA", "BEYOND", "CELESTIAL", "DIVINE", "COSMIC", "IMMORTAL",
@@ -35,144 +36,59 @@ function detectCategory(name) {
   return "Other";
 }
 
-function parsePriceJPY(str) {
-  return Math.round(parseFloat((str || "").replace(/[^0-9.]/g, "")) || 0);
-}
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ─── localStorage キャッシュ ──────────────────────
-function loadCache() {
+// ─── 共有 + localStorage キャッシュ ───────────────
+function loadLocalCache(storageKey) {
   try {
-    const raw = localStorage.getItem("tbh_prices");
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
-    const obj = JSON.parse(raw);
-    return obj;
+    return JSON.parse(raw);
   } catch { return null; }
 }
 
-function saveCache(data) {
-  try { localStorage.setItem("tbh_prices", JSON.stringify(data)); } catch {}
+function saveLocalCache(storageKey, data) {
+  try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch {}
+}
+
+function loadCache() {
+  return loadLocalCache("tbh_prices");
+}
+
+function loadCoinCache() {
+  return loadLocalCache("tbh_coin_prices");
+}
+
+function normalizeCoinCache(cache) {
+  if (!cache) return null;
+  if (cache.items && cache.updatedAt) return cache;
+  return { items: cache, updatedAt: 0 };
+}
+
+async function fetchSharedCache(key) {
+  const res = await fetch(`${PROXY}?type=cache&key=${encodeURIComponent(key)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return json.success ? json.data : null;
+}
+
+async function loadSharedCaches() {
+  try {
+    const [marketCache, coinCache] = await Promise.all([
+      fetchSharedCache(MARKET_CACHE_KEY),
+      fetchSharedCache(COIN_CACHE_KEY),
+    ]);
+    if (marketCache && marketCache.items) saveLocalCache("tbh_prices", marketCache);
+    if (coinCache && coinCache.items) saveLocalCache("tbh_coin_prices", coinCache);
+    return { marketCache, coinCache };
+  } catch {
+    return { marketCache: loadCache(), coinCache: normalizeCoinCache(loadCoinCache()) };
+  }
 }
 
 function isCacheFresh() {
   const cache = loadCache();
   return cache && cache.updatedAt && (Date.now() - cache.updatedAt < CACHE_TTL);
 }
-
-// ─── Steam API コール ─────────────────────────────
-async function steamPrice(name) {
-  const res = await fetch(`${PROXY}?type=price&name=${encodeURIComponent(name)}&currency=8`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-async function steamSearch(query, start = 0, count = 10) {
-  const res = await fetch(`${PROXY}?type=search&q=${encodeURIComponent(query)}&start=${start}&count=${count}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-// ─── 価格更新ワーカー (クライアントサイド) ────────
-const updater = {
-  running: false,
-  phase: "idle",
-  progress: 0,
-  total: 0,
-  completedAt: null,
-  error: null,
-  _onProgress: null,
-
-  async run(onProgress) {
-    if (this.running) return;
-    this.running = true;
-    this.phase = "discovering";
-    this.progress = 0;
-    this.total = 0;
-    this.error = null;
-    this._onProgress = onProgress;
-    this._notify();
-
-    try {
-      // Phase 1: アイテム名を収集
-      const names = await this._discover();
-      this.phase = "pricing";
-      this.total = names.length;
-      this._notify();
-
-      // Phase 2: priceoverview で JPY 価格を取得
-      const prices = await this._fetchPrices(names);
-
-      // Phase 3: 保存
-      const cache = { items: prices, updatedAt: Date.now() };
-      saveCache(cache);
-      this.completedAt = Date.now();
-      this.phase = "idle";
-      this._notify();
-    } catch (e) {
-      this.error = e.message;
-      this.phase = "error";
-      this._notify();
-    }
-    this.running = false;
-  },
-
-  async _discover() {
-    const allNames = new Set();
-    for (const grade of BG_GRADES) {
-      const keyword = GRADE_KEYWORDS[grade];
-      if (!keyword) continue;
-      let start = 0, total = Infinity;
-      while (start < total) {
-        try {
-          const data = await steamSearch(keyword, start, 10);
-          if (!data.success || !data.results) break;
-          total = data.total_count || 0;
-          data.results.forEach(i => allNames.add(i.name));
-          start += 10;
-          if (start < total) await sleep(REQUEST_DELAY);
-        } catch { break; }
-      }
-      await sleep(REQUEST_DELAY);
-    }
-    return [...allNames];
-  },
-
-  async _fetchPrices(names) {
-    const prices = {};
-    // まず既存キャッシュがあれば読む
-    const old = loadCache();
-    if (old && old.items) Object.assign(prices, old.items);
-
-    for (let i = 0; i < names.length; i++) {
-      this.progress = i + 1;
-      if (i % 10 === 0) this._notify();
-      const name = names[i];
-      try {
-        const data = await steamPrice(name);
-        if (data.success) {
-          prices[name] = {
-            lowest:  parsePriceJPY(data.lowest_price),
-            median:  parsePriceJPY(data.median_price),
-            volume:  parseInt((data.volume || "0").replace(/[^0-9]/g, "")) || 0,
-          };
-        }
-      } catch { /* skip */ }
-      await sleep(REQUEST_DELAY);
-    }
-    return prices;
-  },
-
-  _notify() {
-    if (this._onProgress) {
-      this._onProgress({
-        running: this.running, phase: this.phase,
-        progress: this.progress, total: this.total,
-        completedAt: this.completedAt, error: this.error,
-      });
-    }
-  },
-};
 
 // ─── カテゴリ別統計 ───────────────────────────────
 function getCatStats(useMedian = false) {
@@ -232,25 +148,9 @@ function getGradePrices(useMedian = false) {
   return result;
 }
 
-// ─── コイン価格一括取得 ──────────────────────────
-async function fetchCoinPrices(coinNames, onProgress) {
-  const results = {};
-  for (let i = 0; i < coinNames.length; i++) {
-    if (onProgress) onProgress(i + 1, coinNames.length);
-    try {
-      const data = await steamPrice(coinNames[i]);
-      if (data.success && data.lowest_price) {
-        results[coinNames[i]] = parsePriceJPY(data.lowest_price);
-      }
-    } catch {}
-    await sleep(REQUEST_DELAY);
-  }
-  return results;
-}
-
 // ─── エクスポート ────────────────────────────────
 window.steamApi = {
-  updater, getCatStats, getGradePrices, fetchCoinPrices,
-  isCacheFresh, loadCache, steamPrice, steamSearch,
+  getCatStats, getGradePrices,
+  isCacheFresh, loadCache, loadCoinCache, loadSharedCaches,
   detectCategory, GRADE_KEYWORDS, BG_GRADES,
 };

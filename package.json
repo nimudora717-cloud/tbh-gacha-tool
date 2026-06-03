@@ -4,6 +4,7 @@
   "description": "TBH: Task Bar Hero - Gacha EV Calculator & Simulator",
   "private": true,
   "dependencies": {
+    "@netlify/blobs": "^10.7.9",
     "node-fetch": "^3.3.2"
   }
 }
