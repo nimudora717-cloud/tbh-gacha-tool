@@ -107,28 +107,87 @@ async function refreshCoins(store, state, cycle, log) {
   state.coinIndex = (index + 1) % COIN_NAMES.length;
 }
 
+async function saveMarketPrices(store, names, cycle, log, label) {
+  if (!names.length || !canRequest(cycle)) return { updated: 0, attempted: 0 };
+
+  const marketCache = await getJson(store, MARKET_CACHE_KEY, { items: {}, updatedAt: 0 });
+  let updated = 0;
+  let attempted = 0;
+
+  for (const name of names) {
+    if (!canRequest(cycle)) break;
+    try {
+      attempted += 1;
+      const data = await steamPrice(cycle, name);
+      if (!data) {
+        attempted -= 1;
+        break;
+      }
+      if (data.success) {
+        marketCache.items[name] = {
+          lowest: parsePriceJPY(data.lowest_price),
+          median: parsePriceJPY(data.median_price),
+          volume: parseInt((data.volume || "0").replace(/[^0-9]/g, ""), 10) || 0,
+        };
+        updated += 1;
+      } else {
+        log.push(`price-fail:${name}`);
+      }
+    } catch (e) {
+      log.push(`skip:${name}:${e.message}`);
+    }
+  }
+
+  if (updated > 0) {
+    marketCache.updatedAt = Date.now();
+    await setJson(store, MARKET_CACHE_KEY, marketCache);
+  }
+  log.push(`${label}:${updated}/${attempted}:queued=${names.length}:remaining=${cycle.remaining}`);
+  return { updated, attempted };
+}
+
+async function refreshQueuedPrices(store, state, cycle, log) {
+  const queue = state.priceQueue || [];
+  if (!queue.length || !canRequest(cycle)) return;
+
+  const batch = queue.slice(0, cycle.remaining);
+  const { attempted } = await saveMarketPrices(store, batch, cycle, log, "queue-prices");
+  state.priceQueue = queue.slice(attempted);
+}
+
 async function discoverCatalogChunk(store, state, cycle, log) {
   const catalog = await getJson(store, CATALOG_KEY, { names: [], updatedAt: 0 });
   const isCatalogFresh = catalog.names.length > 0 && Date.now() - catalog.updatedAt < CATALOG_TTL;
-  if (isCatalogFresh || !canRequest(cycle)) return catalog;
+  if (isCatalogFresh || !canRequest(cycle)) return { catalog, discoveredNames: [] };
 
   if (!state.discovery || state.discovery.done) {
-    state.discovery = { gradeIndex: 0, start: 0, names: [] };
+    state.discovery = { gradeIndex: 0, start: 0, names: [], failures: 0 };
   }
 
   const grade = BG_GRADES[state.discovery.gradeIndex];
   const keyword = GRADE_KEYWORDS[grade];
-  const data = await steamSearch(cycle, keyword, state.discovery.start);
-  if (!data) return catalog;
-  if (data.success && data.results) {
-    data.results.forEach((item) => state.discovery.names.push(item.name));
-    const nextStart = state.discovery.start + SEARCH_COUNT;
-    if (nextStart < (data.total_count || 0)) {
-      state.discovery.start = nextStart;
-    } else {
+  const start = state.discovery.start;
+  const data = await steamSearch(cycle, keyword, start);
+  if (!data) return { catalog, discoveredNames: [] };
+
+  if (!data.success || !Array.isArray(data.results)) {
+    state.discovery.failures = (state.discovery.failures || 0) + 1;
+    log.push(`discover-fail:${grade}:${start}:attempt=${state.discovery.failures}`);
+    if (state.discovery.failures >= 3) {
       state.discovery.gradeIndex += 1;
       state.discovery.start = 0;
+      state.discovery.failures = 0;
     }
+    return { catalog, discoveredNames: [] };
+  }
+
+  state.discovery.failures = 0;
+  const discoveredNames = data.results.map((item) => item.name).filter(Boolean);
+  state.discovery.names.push(...discoveredNames);
+  state.priceQueue = [...new Set([...(state.priceQueue || []), ...discoveredNames])];
+  const nextStart = start + SEARCH_COUNT;
+  if (nextStart < (data.total_count || 0)) {
+    state.discovery.start = nextStart;
   } else {
     state.discovery.gradeIndex += 1;
     state.discovery.start = 0;
@@ -142,44 +201,26 @@ async function discoverCatalogChunk(store, state, cycle, log) {
     await setJson(store, CATALOG_KEY, catalog);
     log.push(`catalog:${catalog.names.length}`);
   } else {
-    log.push(`discover:${grade}:${state.discovery.start}`);
+    const nextGrade = BG_GRADES[state.discovery.gradeIndex];
+    log.push(`discover:${grade}:${start}->${state.discovery.start}:items=${discoveredNames.length}:total=${data.total_count || 0}:next=${nextGrade}`);
   }
 
-  return catalog;
+  return { catalog, discoveredNames };
 }
 
 async function refreshMarketBatch(store, state, catalog, cycle, log) {
   if (!catalog.names.length || !state.discovery?.done) return;
 
-  const marketCache = await getJson(store, MARKET_CACHE_KEY, { items: {}, updatedAt: 0 });
   let index = state.marketIndex || 0;
-  let updated = 0;
+  const names = [];
 
-  while (canRequest(cycle) && catalog.names.length > 0) {
-    const name = catalog.names[index % catalog.names.length];
-    try {
-      const data = await steamPrice(cycle, name);
-      if (!data) break;
-      if (data.success) {
-        marketCache.items[name] = {
-          lowest: parsePriceJPY(data.lowest_price),
-          median: parsePriceJPY(data.median_price),
-          volume: parseInt((data.volume || "0").replace(/[^0-9]/g, ""), 10) || 0,
-        };
-        updated += 1;
-      }
-    } catch (e) {
-      log.push(`skip:${name}:${e.message}`);
-    }
+  while (canRequest(cycle) && names.length < cycle.remaining && catalog.names.length > 0) {
+    names.push(catalog.names[index % catalog.names.length]);
     index = (index + 1) % catalog.names.length;
   }
 
-  if (updated > 0) {
-    marketCache.updatedAt = Date.now();
-    await setJson(store, MARKET_CACHE_KEY, marketCache);
-  }
-  state.marketIndex = index;
-  log.push(`market:${updated}/${catalog.names.length}:remaining=${cycle.remaining}`);
+  const { attempted } = await saveMarketPrices(store, names, cycle, log, "market");
+  state.marketIndex = (state.marketIndex || 0) + attempted;
 }
 
 export default async () => {
@@ -189,7 +230,8 @@ export default async () => {
   const cycle = { remaining: CYCLE_REQUEST_LIMIT, startedAt: Date.now() };
 
   await refreshCoins(store, state, cycle, log);
-  const catalog = await discoverCatalogChunk(store, state, cycle, log);
+  const { catalog } = await discoverCatalogChunk(store, state, cycle, log);
+  await refreshQueuedPrices(store, state, cycle, log);
   await refreshMarketBatch(store, state, catalog, cycle, log);
   state.updatedAt = Date.now();
   await setJson(store, STATE_KEY, state);
