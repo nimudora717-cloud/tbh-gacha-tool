@@ -112,14 +112,37 @@ function rollOnce(coin) {
   return coin.grade;
 }
 
-function pull(count) {
+// ─── グレード→光彩クラス ────────────────────────
+function glowClass(grade) {
+  const map = {
+    RARE:'rare-glow', LEGENDARY:'legendary-glow', IMMORTAL:'immortal-glow',
+    ARCANA:'arcana-glow', BEYOND:'beyond-glow', CELESTIAL:'celestial-glow',
+    DIVINE:'divine-glow', COSMIC:'cosmic-glow',
+  };
+  return map[grade] || '';
+}
+
+function isHighGrade(grade) {
+  return GRADE_ORDER.indexOf(grade) >= GRADE_ORDER.indexOf('ARCANA');
+}
+
+// ─── コイン回転演出 ──────────────────────────────
+function showCoinSpin(coinGrade) {
+  return new Promise(resolve => {
+    const gc = GRADE_COLORS[coinGrade];
+    const overlay = document.createElement('div');
+    overlay.className = 'gacha-overlay';
+    overlay.innerHTML = `<div class="gacha-coin-spin" style="border-color:${gc.text};background:${gc.bg};color:${gc.text};">🪙</div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', () => { overlay.remove(); resolve(); });
+    setTimeout(() => { overlay.remove(); resolve(); }, 1000);
+  });
+}
+
+// ─── メインプル関数 ──────────────────────────────
+async function pull(count) {
   const coin = COINS[selectedCoinIdx];
   pullCount += count;
-
-  // 動画広告表示チェック
-  if (count === 1 && pullCount % AD_INTERVAL === 0) {
-    showVideoAd();
-  }
 
   const results = [];
   for (let i = 0; i < count; i++) {
@@ -129,36 +152,79 @@ function pull(count) {
     history.unshift({ coinName: coin.name, grade, value, num: history.length + 1 });
   }
 
-  // 直近の結果を表示
-  if (count <= 10) {
-    showResults(results);
+  // 演出
+  if (count === 1) {
+    await showCoinSpin(coin.grade);
+    showSingleResult(results[0]);
+  } else if (count <= 10) {
+    await showCoinSpin(coin.grade);
+    showMultiResults(results);
   } else {
     showBulkResults(results);
   }
 
-  // 結果後の広告を表示
   document.getElementById("resultAd").style.display = "block";
-
   updateStats();
   updateHistory();
+
+  // 高グレード排出時にバイブレーション
+  const bestGrade = results.reduce((best, r) =>
+    GRADE_ORDER.indexOf(r.grade) > GRADE_ORDER.indexOf(best) ? r.grade : best, results[0].grade);
+  if (isHighGrade(bestGrade) && navigator.vibrate) {
+    navigator.vibrate([50, 30, 100]);
+  }
 }
 
-function showResults(results) {
+// ─── 単発結果 ────────────────────────────────────
+function showSingleResult(r) {
+  const el = document.getElementById("pullResult");
+  el.style.display = "block";
+  const gc = GRADE_COLORS[r.grade];
+  const isHigh = GRADE_ORDER.indexOf(r.grade) >= GRADE_ORDER.indexOf(r.coinGrade);
+  const glow = glowClass(r.grade);
+
+  el.innerHTML = `
+    <div class="pull-result ${glow}" style="border-color:${gc.border}; background:${gc.bg}; max-width:320px;">
+      <div class="result-grade" style="display:flex;align-items:center;gap:8px;">
+        <span class="grade-badge" style="background:${gc.border}; color:${gc.text}; font-size:12px; padding:3px 10px;">${r.grade}</span>
+        ${isHigh ? '<span style="color:var(--gold); font-size:14px; font-weight:900;">★ HIGH GRADE!</span>' : ''}
+      </div>
+      <div class="result-name" style="color:${gc.text}; font-size:18px;">${r.coinName}から排出</div>
+      <div class="result-price" style="color:${gc.text}; font-size:28px;">¥${r.value.toLocaleString()}</div>
+    </div>`;
+}
+
+// ─── 10連結果（グリッド表示 + 遅延出現） ─────────
+function showMultiResults(results) {
   const el = document.getElementById("pullResult");
   el.style.display = "block";
 
-  el.innerHTML = results.map(r => {
+  const totalValue = results.reduce((s, r) => s + r.value, 0);
+  const bestResult = results.reduce((best, r) =>
+    GRADE_ORDER.indexOf(r.grade) > GRADE_ORDER.indexOf(best.grade) ? r : best, results[0]);
+  const bestGc = GRADE_COLORS[bestResult.grade];
+
+  const cards = results.map((r, i) => {
     const gc = GRADE_COLORS[r.grade];
     const isHigh = GRADE_ORDER.indexOf(r.grade) >= GRADE_ORDER.indexOf(r.coinGrade);
-    return `<div class="pull-result" style="border-color:${gc.border}; background:${gc.bg};">
+    const glow = glowClass(r.grade);
+    return `<div class="pull-result ${glow}" style="border-color:${gc.border}; background:${gc.bg}; --i:${i};">
       <div class="result-grade">
-        <span class="grade-badge" style="background:${gc.border}; color:${gc.text};">${r.grade}</span>
-        ${isHigh ? '<span style="color:var(--gold); font-size:12px; margin-left:6px;">★ レア！</span>' : ''}
+        <span class="grade-badge" style="background:${gc.border};color:${gc.text};font-size:10px;padding:2px 8px;">${r.grade}</span>
+        ${isHigh ? '<span style="color:var(--gold);font-size:10px;margin-left:4px;">★</span>' : ''}
       </div>
-      <div class="result-name" style="color:${gc.text};">${r.coinName}から排出</div>
-      <div class="result-price" style="color:${gc.text};">¥${r.value.toLocaleString()}</div>
+      <div class="result-price" style="color:${gc.text};font-size:18px;">¥${r.value.toLocaleString()}</div>
     </div>`;
   }).join("");
+
+  el.innerHTML = `
+    <div style="text-align:center;margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text3);">${results.length}連 合計</div>
+      <div style="font-family:'Roboto Mono',monospace;font-size:32px;font-weight:900;color:${bestGc.text};">
+        ¥${totalValue.toLocaleString()}
+      </div>
+    </div>
+    <div class="multi-result-grid">${cards}</div>`;
 }
 
 function showBulkResults(results) {

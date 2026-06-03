@@ -176,33 +176,48 @@ async function discoverCatalogChunk(store, state, cycle, log) {
     state.discovery = { gradeIndex: 0, start: 0, names: [], failures: 0 };
   }
 
-  const grade = BG_GRADES[state.discovery.gradeIndex];
-  const keyword = GRADE_KEYWORDS[grade];
-  const start = state.discovery.start;
-  const data = await steamSearch(cycle, keyword, start);
-  if (!data) return { catalog, discoveredNames: [] };
+  const allDiscovered = [];
 
-  if (!data.success || !Array.isArray(data.results)) {
-    state.discovery.failures = (state.discovery.failures || 0) + 1;
-    log.push(`discover-fail:${grade}:${start}:attempt=${state.discovery.failures}`);
-    if (state.discovery.failures >= 3) {
+  // Process multiple pages/grades per invocation (use up to 10 requests for discovery)
+  const discoveryBudget = Math.min(10, cycle.remaining);
+  let used = 0;
+
+  while (state.discovery.gradeIndex < BG_GRADES.length && used < discoveryBudget && canRequest(cycle)) {
+    const grade = BG_GRADES[state.discovery.gradeIndex];
+    const keyword = GRADE_KEYWORDS[grade];
+    const start = state.discovery.start;
+    const data = await steamSearch(cycle, keyword, start);
+    used++;
+    if (!data) break;
+
+    if (!data.success || !Array.isArray(data.results)) {
+      state.discovery.failures = (state.discovery.failures || 0) + 1;
+      log.push(`discover-fail:${grade}:${start}:attempt=${state.discovery.failures}`);
+      if (state.discovery.failures >= 3) {
+        state.discovery.gradeIndex += 1;
+        state.discovery.start = 0;
+        state.discovery.failures = 0;
+      }
+      continue;
+    }
+
+    state.discovery.failures = 0;
+    const discoveredNames = data.results.map((item) => item.name).filter(Boolean);
+    state.discovery.names.push(...discoveredNames);
+    allDiscovered.push(...discoveredNames);
+    const nextStart = start + SEARCH_COUNT;
+    if (nextStart < (data.total_count || 0)) {
+      state.discovery.start = nextStart;
+    } else {
       state.discovery.gradeIndex += 1;
       state.discovery.start = 0;
-      state.discovery.failures = 0;
     }
-    return { catalog, discoveredNames: [] };
+    log.push(`discover:${grade}:${start}:+${discoveredNames.length}`);
   }
 
-  state.discovery.failures = 0;
-  const discoveredNames = data.results.map((item) => item.name).filter(Boolean);
-  state.discovery.names.push(...discoveredNames);
-  state.priceQueue = sortByGradePriority([...(state.priceQueue || []), ...discoveredNames]);
-  const nextStart = start + SEARCH_COUNT;
-  if (nextStart < (data.total_count || 0)) {
-    state.discovery.start = nextStart;
-  } else {
-    state.discovery.gradeIndex += 1;
-    state.discovery.start = 0;
+  // Queue newly discovered items for pricing
+  if (allDiscovered.length) {
+    state.priceQueue = sortByGradePriority([...(state.priceQueue || []), ...allDiscovered]);
   }
 
   if (state.discovery.gradeIndex >= BG_GRADES.length) {
@@ -211,29 +226,30 @@ async function discoverCatalogChunk(store, state, cycle, log) {
     state.discovery.done = true;
     state.marketIndex = 0;
     await setJson(store, CATALOG_KEY, catalog);
-    log.push(`catalog:${catalog.names.length}`);
-  } else {
-    const nextGrade = BG_GRADES[state.discovery.gradeIndex];
-    log.push(`discover:${grade}:${start}->${state.discovery.start}:items=${discoveredNames.length}:total=${data.total_count || 0}:next=${nextGrade}`);
+    log.push(`catalog-complete:${catalog.names.length}`);
   }
 
-  return { catalog, discoveredNames };
+  return { catalog, discoveredNames: allDiscovered };
 }
 
 async function refreshMarketBatch(store, state, catalog, cycle, log) {
   if (!catalog.names.length || !state.discovery?.done) return;
 
-  const catalogNames = sortByGradePriority(catalog.names);
-  let index = state.marketIndex || 0;
+  const catalogNames = catalog.names; // already sorted
+  const total = catalogNames.length;
+  let index = (state.marketIndex || 0) % total; // ensure within bounds
   const names = [];
 
-  while (canRequest(cycle) && names.length < cycle.remaining && catalogNames.length > 0) {
-    names.push(catalogNames[index % catalogNames.length]);
-    index = (index + 1) % catalogNames.length;
+  // Pick up to cycle.remaining items starting from the current index
+  const limit = Math.min(cycle.remaining, total);
+  for (let i = 0; i < limit && canRequest(cycle); i++) {
+    names.push(catalogNames[(index + i) % total]);
   }
 
   const { attempted } = await saveMarketPrices(store, names, cycle, log, "market");
-  state.marketIndex = (state.marketIndex || 0) + attempted;
+  // Advance index by the number actually attempted, wrapping around
+  state.marketIndex = (index + attempted) % total;
+  log.push(`index:${index}->${state.marketIndex}/${total}`);
 }
 
 export default async () => {
