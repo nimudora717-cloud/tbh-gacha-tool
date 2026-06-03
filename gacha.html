@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TBH ガチャシミュレーター | タスクバーヒーロー コイン開封シミュ</title>
+  <meta name="description" content="タスクバーヒーロー(TBH)のガチャシミュレーター。コインを使わずにドロップ結果を試せます。実際の排出確率で何が出るか確認しよう！">
+  <meta name="keywords" content="タスクバーヒーロー,TBH,ガチャシミュレーター,コイン,ドロップ,確率">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script> -->
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="/" class="site-logo">TBH<span>CALC</span></a>
+      <nav class="nav-links">
+        <a href="/">期待値計算</a>
+        <a href="/gacha.html" class="active">ガチャシミュ</a>
+      </nav>
+    </div>
+  </header>
+
+  <div style="max-width:1100px; margin:20px auto 0; padding:0 20px;">
+    <div class="ad-slot ad-slot-leaderboard">広告エリア (728×90)</div>
+  </div>
+
+  <div class="main-container">
+    <main class="main-content">
+      <section class="section">
+        <div class="section-title">
+          <div class="icon" style="background:rgba(255,215,64,0.15); color:var(--gold);">🎰</div>
+          ガチャシミュレーター
+        </div>
+        <p style="font-size:13px; color:var(--text2); margin-bottom:16px;">
+          実際のドロップ確率でコイン開封をシミュレーション。Steamウォレットを使わずに結果を試せます。
+        </p>
+
+        <!-- コイン選択 -->
+        <div class="gacha-coin-select" id="coinSelect"></div>
+
+        <!-- 広告: 動画広告スロット（プル前に表示） -->
+        <div class="ad-slot ad-slot-video" id="videoAdSlot" style="display:none;">
+          <!-- 動画リワード広告 / インタースティシャル -->
+          <div style="text-align:center;">
+            <p style="margin-bottom:8px;">🎬 動画広告</p>
+            <p style="font-size:11px;">広告を見てガチャを回す</p>
+            <button class="pull-btn" style="font-size:14px; padding:10px 30px; margin-top:10px;"
+                    onclick="closeVideoAd()">
+              スキップして引く
+            </button>
+          </div>
+        </div>
+
+        <!-- プルボタン -->
+        <div class="gacha-area">
+          <div style="margin-bottom:16px;">
+            <button class="pull-btn" onclick="pull(1)">1回引く</button>
+          </div>
+          <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+            <button class="gacha-coin-btn" onclick="pull(10)" style="font-size:14px; padding:8px 20px; border-color:var(--gold); color:var(--gold);">
+              10連ガチャ
+            </button>
+            <button class="gacha-coin-btn" onclick="pull(100)" style="font-size:14px; padding:8px 20px;">
+              100連シミュ
+            </button>
+            <button class="gacha-coin-btn" onclick="resetHistory()" style="color:var(--danger); border-color:var(--danger);">
+              リセット
+            </button>
+          </div>
+        </div>
+
+        <!-- 結果表示 -->
+        <div id="pullResult" style="display:none;"></div>
+
+        <!-- 広告: 結果後 -->
+        <div class="ad-slot ad-slot-native" id="resultAd" style="display:none;">
+          広告エリア (結果後インフィード)
+        </div>
+      </section>
+
+      <!-- 統計 -->
+      <section class="section">
+        <div class="section-title">
+          <div class="icon" style="background:rgba(68,170,255,0.15); color:var(--info);">📈</div>
+          シミュレーション結果
+        </div>
+        <div class="summary-grid" id="statsPanel">
+          <div class="summary-box"><div class="label">総試行</div><div class="value">0</div></div>
+          <div class="summary-box"><div class="label">総コスト</div><div class="value">¥0</div></div>
+          <div class="summary-box"><div class="label">総価値</div><div class="value">¥0</div></div>
+          <div class="summary-box"><div class="label">収支</div><div class="value">¥0</div></div>
+        </div>
+
+        <!-- グレード別カウント -->
+        <div id="gradeStats" style="margin-top:12px;"></div>
+      </section>
+
+      <div class="ad-slot ad-slot-native">広告エリア (ネイティブ広告)</div>
+
+      <!-- 履歴テーブル -->
+      <section class="section">
+        <div class="section-title">📋 ドロップ履歴（直近50件）</div>
+        <div style="overflow-x:auto;">
+          <table class="history-table" id="historyTable">
+            <thead>
+              <tr><th>#</th><th>コイン</th><th>結果グレード</th><th>推定価値</th></tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <div class="ad-slot ad-slot-rectangle">広告エリア (300×250)</div>
+
+      <div class="section">
+        <div class="section-title">🎯 期待値テーブル</div>
+        <div id="evTable" style="font-size:12px;"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">💡 ヒント</div>
+        <ul style="font-size:12px; color:var(--text2); padding-left:18px; list-style:disc;">
+          <li style="margin-bottom:6px;">シミュレーション結果は実際のドロップ確率に基づいています</li>
+          <li style="margin-bottom:6px;">100連以上で期待値に収束しやすくなります</li>
+          <li style="margin-bottom:6px;">「残り」確率はコイングレード以下のアイテムが出ます</li>
+          <li>実際のマーケット価格は変動します</li>
+        </ul>
+      </div>
+
+      <div class="ad-slot ad-slot-rectangle">広告エリア (300×250)</div>
+    </aside>
+  </div>
+
+  <footer class="site-footer">
+    <p>TBH Gacha Simulator — タスクバーヒーロー ガチャシミュレーター</p>
+    <p>Steamおよびタスクバーヒーローの商標は各権利者に帰属します。</p>
+  </footer>
+
+  <script src="/js/gacha.js"></script>
+</body>
+</html>

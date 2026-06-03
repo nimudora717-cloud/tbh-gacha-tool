@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TBH コイン期待値チェッカー | タスクバーヒーロー ガチャ計算ツール</title>
+  <meta name="description" content="タスクバーヒーロー(TBH: Task Bar Hero)のコイン期待値を自動計算。Steamマーケット価格をリアルタイム取得して購入タイミングを判定します。">
+  <meta name="keywords" content="タスクバーヒーロー,TBH,Task Bar Hero,Steam,マーケット,期待値,ガチャ,コイン,計算">
+  <meta property="og:title" content="TBH コイン期待値チェッカー">
+  <meta property="og:description" content="タスクバーヒーローのコイン期待値をSteamマーケット価格から自動計算">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- ─── ヘッダー ──────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="/" class="site-logo">TBH<span>CALC</span></a>
+      <nav class="nav-links">
+        <a href="/" class="active">期待値計算</a>
+        <a href="/gacha.html">ガチャシミュ</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ─── メインレイアウト ─────── -->
+  <div class="main-container">
+    <main class="main-content">
+
+      <!-- フェッチバー -->
+      <div class="fetch-bar">
+        <button class="fetch-btn" id="fetchAllBtn" onclick="fetchCoinPrices()">
+          🪙 コイン価格を取得
+        </button>
+        <span class="fetch-status" id="fetchStatus">⏳ 価格データを読み込み中…</span>
+        <div class="spinner hidden" id="fetchSpinner"></div>
+      </div>
+
+      <!-- グレード別価格 -->
+      <section class="section" id="gradeSection">
+        <div class="section-title">
+          <div class="icon" style="background:rgba(0,229,160,0.15); color:var(--accent);">💎</div>
+          グレード別 平均マーケット価格（¥）
+        </div>
+        <div class="grade-grid" id="gradeGrid"></div>
+      </section>
+
+      <!-- コインカード一覧 -->
+      <section id="coinCards"></section>
+
+    </main>
+
+    <!-- ─── サイドバー ──────────── -->
+    <aside class="sidebar">
+      <!-- サマリー -->
+      <div class="section">
+        <div class="section-title">
+          <div class="icon" style="background:rgba(255,215,64,0.15); color:var(--gold);">📊</div>
+          サマリー
+        </div>
+        <div id="summaryPanel"></div>
+      </div>
+
+      <!-- ソート -->
+      <div class="section">
+        <div class="section-title">⚙️ 表示設定</div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          <button class="gacha-coin-btn active" data-sort="roi" onclick="setSort('roi',this)">ROI順</button>
+          <button class="gacha-coin-btn" data-sort="profit" onclick="setSort('profit',this)">利益順</button>
+          <button class="gacha-coin-btn" data-sort="grade" onclick="setSort('grade',this)">グレード順</button>
+        </div>
+        <div style="margin-top:12px;">
+          <label style="font-size:12px; color:var(--text2); display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="feeToggle" onchange="render()">
+            Steam手数料(15%)を考慮
+          </label>
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:12px; color:var(--text2); display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="medianToggle" onchange="applyCatStats(); render();">
+            中央値で計算（チェックなし＝平均）
+          </label>
+          <div style="font-size:10px; color:var(--text3); margin-top:3px; line-height:1.4;">
+            価格ベース: <span id="priceBaseLabel" style="color:var(--accent);">読み込み中…</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ─── フッター ──────────────── -->
+  <footer class="site-footer">
+    <p>TBH Gacha Calculator — タスクバーヒーロー ガチャ期待値計算ツール</p>
+    <p>Steamおよびタスクバーヒーローの商標は各権利者に帰属します。本サイトはファンメイドツールです。</p>
+    <p style="margin-top:8px;">
+      <a href="/gacha.html" style="color:var(--accent); text-decoration:none;">ガチャシミュレーター →</a>
+    </p>
+  </footer>
+
+  <script src="/js/steam-api.js"></script>
+  <script src="/js/calculator.js"></script>
+</body>
+</html>

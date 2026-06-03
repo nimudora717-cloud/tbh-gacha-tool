@@ -1,0 +1,445 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Orbitron:wght@700;900&family=Roboto+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --bg: #0d0f14;
+  --bg2: #151820;
+  --bg3: #1c2030;
+  --card: #181c28;
+  --border: #2a2f40;
+  --text: #e0e4f0;
+  --text2: #8890a8;
+  --text3: #555c70;
+  --accent: #00e5a0;
+  --accent2: #00b880;
+  --danger: #ff5566;
+  --warn: #ffaa30;
+  --info: #44aaff;
+  --gold: #ffd740;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  min-height: 100vh;
+}
+
+/* ─── 広告スロット ─────────────────── */
+.ad-slot {
+  background: var(--bg3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+  font-size: 12px;
+  overflow: hidden;
+  min-height: 90px;
+}
+.ad-slot-leaderboard { max-width: 728px; height: 90px; margin: 0 auto 20px; }
+.ad-slot-rectangle { width: 300px; min-height: 250px; margin: 16px auto; }
+.ad-slot-native { max-width: 100%; min-height: 100px; margin: 20px 0; padding: 12px; }
+.ad-slot-video {
+  max-width: 400px; min-height: 225px; margin: 20px auto;
+  background: linear-gradient(135deg, var(--bg3), #1a1530);
+}
+
+/* ─── ヘッダー ─────────────────── */
+.site-header {
+  background: linear-gradient(180deg, #10131a 0%, var(--bg) 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.site-logo {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--accent);
+  text-decoration: none;
+  letter-spacing: 1px;
+}
+.site-logo span { color: var(--text); }
+.nav-links { display: flex; gap: 6px; }
+.nav-links a {
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.nav-links a:hover, .nav-links a.active {
+  background: var(--bg3);
+  color: var(--accent);
+}
+
+/* ─── メインレイアウト ─────────────── */
+.main-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+}
+.main-content { min-width: 0; }
+.sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+@media (max-width: 900px) {
+  .main-container { grid-template-columns: 1fr; }
+  .sidebar { order: -1; }
+}
+
+/* ─── セクション ──────────────────── */
+.section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title .icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+/* ─── グレード入力グリッド ────────── */
+.grade-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+  gap: 8px;
+}
+.grade-input-card {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+.grade-input-card:focus-within {
+  border-color: var(--accent);
+}
+.grade-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.grade-input-card input {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 6px;
+  outline: none;
+  font-family: 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.grade-input-card input:focus {
+  border-color: var(--accent);
+}
+
+/* ─── コインカード ────────────────── */
+.coin-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  transition: border-color 0.3s;
+}
+.coin-card.buy { border-color: var(--accent2); }
+.coin-card.wait { border-color: var(--danger); }
+.coin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.coin-card.buy .coin-header { background: rgba(0,229,160,0.06); }
+.coin-card.wait .coin-header { background: rgba(255,85,102,0.06); }
+.coin-verdict {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  min-width: 60px;
+}
+.coin-verdict.buy { color: var(--accent); }
+.coin-verdict.wait { color: var(--danger); }
+.coin-name { font-size: 14px; font-weight: 700; }
+.coin-name-en { font-size: 10px; color: var(--text3); }
+.coin-body { padding: 12px 16px; background: var(--bg2); }
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.metric-box {
+  padding: 8px 10px;
+  background: var(--card);
+  border-radius: 6px;
+}
+.metric-label { font-size: 10px; color: var(--text3); margin-bottom: 2px; }
+.metric-value { font-size: 17px; font-weight: 700; font-family: 'Roboto Mono', monospace; font-variant-numeric: tabular-nums; }
+.metric-value.positive { color: var(--accent); }
+.metric-value.negative { color: var(--danger); }
+
+.metric-box input {
+  width: 100%;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--gold);
+  font-size: 17px;
+  font-weight: 700;
+  padding: 3px 6px;
+  outline: none;
+  font-family: 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.metric-box input:focus { border-color: var(--gold); }
+
+/* ─── ドロップバー ────────────────── */
+.drop-bar {
+  display: flex;
+  height: 22px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+}
+.drop-bar-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  transition: width 0.4s ease;
+  overflow: hidden;
+}
+.drop-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+.drop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: var(--bg3);
+  border-radius: 4px;
+}
+.drop-chip .contrib { color: var(--accent); font-weight: 600; }
+
+/* ─── フェッチステータス ──────────── */
+.fetch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.fetch-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.fetch-btn:hover { opacity: 0.85; }
+.fetch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.fetch-status { font-size: 12px; color: var(--text2); }
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── ガチャシミュレーター ─────────── */
+.gacha-area {
+  text-align: center;
+  padding: 30px 20px;
+}
+.gacha-coin-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.gacha-coin-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.gacha-coin-btn.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255,215,64,0.08);
+}
+.pull-btn {
+  background: linear-gradient(135deg, var(--gold), #ff9500);
+  color: #1a1000;
+  border: none;
+  padding: 16px 50px;
+  border-radius: 12px;
+  font-size: 20px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+  font-family: 'Orbitron', sans-serif;
+  box-shadow: 0 4px 20px rgba(255,215,64,0.3);
+}
+.pull-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 6px 30px rgba(255,215,64,0.5);
+}
+.pull-btn:active { transform: scale(0.97); }
+.pull-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.pull-result {
+  margin: 24px auto;
+  max-width: 300px;
+  padding: 20px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--card);
+  animation: reveal 0.5s ease;
+}
+@keyframes reveal {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.pull-result .result-grade { font-size: 14px; margin-bottom: 6px; }
+.pull-result .result-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.pull-result .result-price { font-family: 'Roboto Mono', monospace; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 16px;
+}
+.history-table th {
+  color: var(--text3);
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.history-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(42,47,64,0.5);
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.summary-box {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.summary-box .label { font-size: 10px; color: var(--text3); }
+.summary-box .value { font-size: 20px; font-weight: 700; font-family: 'Roboto Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* ─── カテゴリ別内訳テーブル ────── */
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.detail-table th {
+  color: var(--text3);
+  font-weight: 500;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  text-align: left;
+}
+.detail-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid rgba(42,47,64,0.4);
+  vertical-align: middle;
+}
+.detail-row:hover td {
+  background: rgba(255,255,255,0.03);
+}
+
+/* ─── フッター ─────────────────── */
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 20px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 11px;
+  margin-top: 40px;
+}
+
+/* ─── ユーティリティ ──────────────── */
+.hidden { display: none !important; }
+.text-accent { color: var(--accent); }
+.text-danger { color: var(--danger); }
+.text-gold { color: var(--gold); }

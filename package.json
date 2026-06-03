@@ -1,0 +1,9 @@
+{
+  "name": "tbh-gacha-tool",
+  "version": "1.0.0",
+  "description": "TBH: Task Bar Hero - Gacha EV Calculator & Simulator",
+  "private": true,
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
